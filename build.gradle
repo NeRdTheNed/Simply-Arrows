@@ -92,7 +92,30 @@ dependencies {
     runtimeOnly "mezz.jei:jei_1.12.2:${version_jei}"
 }
 
+configurations {
+
+    hackToGetAccessTransformers.extendsFrom(implementation, runtimeOnly)
+}
+
+def isRunningClientOrServer = false
+
+task checkIfRunningClientOrServer() {
+
+    gradle.startParameter.getTaskNames().each { taskName ->
+
+        if ("runClient".equals(taskName) || "runServer".equals(taskName)) {
+
+            isRunningClientOrServer = true
+        }
+    }
+}
+
 processResources {
+
+    duplicatesStrategy = 'fail'
+
+    dependsOn configurations.hackToGetAccessTransformers
+    dependsOn checkIfRunningClientOrServer
 
     inputs.property "version", project.version
     inputs.property "mcversion", project.version_minecraft
@@ -102,7 +125,44 @@ processResources {
         expand 'version': project.version, 'mcversion': project.version_minecraft
     }
 
+    if (isRunningClientOrServer) {
+
+        from {
+
+            configurations.hackToGetAccessTransformers.collect {
+
+                zipTree(it).matching {include "META-INF/**_at.cfg"}
+            }
+        }
+    }
+
     from 'LICENSE'
+}
+
+jar {
+
+    dependsOn processResources
+    dependsOn checkIfRunningClientOrServer
+
+    inputs.property "isRunningClientOrServer", isRunningClientOrServer
+
+    if (isRunningClientOrServer) {
+
+        def manifestEntries = ""
+
+        fileTree("$buildDir/resources/main").matching {
+
+            include "META-INF/**_at.cfg"
+        }.each { File file ->
+
+            manifestEntries += file.name + " "
+        }
+
+        manifest {
+
+            attributes 'FMLAT': manifestEntries
+        }
+    }
 }
 
 // Copies source code into a temporary build directory, then replaces tokens in source files
